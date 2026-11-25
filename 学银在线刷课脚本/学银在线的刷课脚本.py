@@ -30,35 +30,37 @@ async def main(argv:int = 0):
             logger.info(f"开始查找视频元素")
             button_has:bool=False
             for index, frame in enumerate(page.frames):
-                count = await frame.locator("button.vjs-big-play-button").count()
+                buttons = frame.locator("button.vjs-big-play-button")
+                count = await buttons.count()
                 logger.info(
                     f"frame[{index}]，名称={frame.name!r}，播放按钮数量={count}"
                 )
-                if count > 0:
-                    logger.info(f"在frame[{index}]中找到了播放按钮")
+                for video_index in range(count):
+                    button = buttons.nth(video_index)
+                    # 截图中的播放按钮和 video 位于同一个播放器容器中
+                    video = button.locator("..").locator("video")
                     button_has = True
-                    await frame.locator("button.vjs-big-play-button").click()
-                    break
+                    logger.info(f"开始播放frame[{index}]中的第{video_index + 1}个视频")
+                    await button.click()
+                    was_paused = False
+                    # 当前视频结束后，才处理下一个播放器
+                    while True:
+                        state = await video.evaluate(
+                            "video => ({ended: video.ended, paused: video.paused})"
+                        )
+                        if state["ended"]:
+                            logger.info(f"frame[{index}]中的第{video_index + 1}个视频播放完毕")
+                            break
+                        if state["paused"] and not was_paused:
+                            logger.warning("视频已暂停，请检查页面并处理；恢复播放后将继续等待")
+                        elif was_paused and not state["paused"]:
+                            logger.info("视频已恢复播放")
+                        was_paused = state["paused"]
+                        await asyncio.sleep(2)
             if not button_has:
                 logger.warning(f"没有找到播放按钮，跳过该二级标题")
                 continue
-            logger.info(f"开始播放视频")
-            video = frame.locator("video")
-            was_paused = False
-            # 每两秒检查实际播放状态，暂停或缓冲时继续等待当前视频
-            while True:
-                state = await video.evaluate(
-                    "video => ({ended: video.ended, paused: video.paused})"
-                )
-                if state["ended"]:
-                    logger.info("视频播放完毕，进入下一节")
-                    break
-                if state["paused"] and not was_paused:
-                    logger.warning("视频已暂停，请检查页面并处理；恢复播放后将继续等待")
-                elif was_paused and not state["paused"]:
-                    logger.info("视频已恢复播放")
-                was_paused = state["paused"]
-                await asyncio.sleep(2)
+            logger.info("该二级标题下的视频已全部播放完毕，进入下一节")
 
 
         input()
@@ -67,4 +69,4 @@ async def main(argv:int = 0):
         await browser.close()
 
 
-asyncio.run(main(argv=4))
+asyncio.run(main(argv=12))
